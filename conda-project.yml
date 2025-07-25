@@ -1,0 +1,6 @@
+name: PlantPulse-Patch-Software
+environments:
+  default:
+    - environment.yml
+variables: {}
+commands: {}
