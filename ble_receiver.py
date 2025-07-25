@@ -28,7 +28,7 @@ async def handle_notification(sender, data):
         print(f"Parse error: {e}")
 
 def disconnect_callback(sender: BleakClient):
-    print(f"Patch {sender.address} disconnected")
+    print(f"Patch {connected_addresses[sender.address]} disconnected")
     connected_addresses.pop(sender.address)
     print(connected_addresses)
 
@@ -36,73 +36,50 @@ async def connect_to_patch(device):
     client = BleakClient(device, disconnected_callback=disconnect_callback)
     if device.address in connected_addresses:
         return
+
+    connected_addresses[device.address] = device.name
+
     try:
         await client.connect()
         print(f"Connected to {device.name} at {device.address}")
 
-        # services = await client.get_services()
-        # print(services)
-        # for service in services:
-        #     print(f"Service: {service}, UUID: {service.uuid}")
-        #     if service.uuid is "1234":
-        #         chars = service.characteristics
-        #         for char in chars:
-        #             if char.uuid is "1234":
-        #
-
         await client.start_notify(CHAR_UUID, handle_notification)
         print("Subscribed to characteristic")
-        connected_addresses[device.address] = device.name
         print(connected_addresses)
-
-        while True:
-            await asyncio.sleep(1)  # Keep alive
 
     except Exception as e:
         print(f"Failed to connect to {device.name} ({device.address}): {e}")
-        await client.disconnect()
+        if client.is_connected:
+            await client.disconnect()
+        if client.address in connected_addresses:
+            connected_addresses.pop(client.address)
 
-async def initial_scan_and_connect(scan_duration=10):
-    print(f"Scanning for patches for {scan_duration} seconds...")
-    # await asyncio.sleep(scan_duration)  # Let nearby patches boot
-    devices = await BleakScanner.discover(timeout=scan_duration)
-    targets = [
-        d for d in devices
-        if d.name and d.name.lower().startswith(prefix_filter)
-    ]
-
-    print(f"Found {len(devices)} total devices.")
-    for t in targets:
-        print(f"Target: {t.name} ({t.address})")
-
-    tasks = [asyncio.create_task(connect_to_patch(d)) for d in targets]
-    return tasks
-
-async def periodic_rescan(interval=5):
+async def scan_and_connect(scan_duration=10):
     while True:
-        await asyncio.sleep(interval)
-        print("Rescanning for new patches...")
-        devices = await BleakScanner.discover(timeout=BLE_SCAN_TIMEOUT)
-        new_targets = [
+        print(f"Scanning for patches for {scan_duration} seconds...")
+        # await asyncio.sleep(scan_duration)  # Let nearby patches boot
+        devices = await BleakScanner.discover(timeout=scan_duration)
+        targets = [
             d for d in devices
             if d.name and d.name.lower().startswith(prefix_filter)
-            and d.address not in connected_addresses
+               and d.address not in connected_addresses
         ]
 
-        for d in new_targets:
-            print(f"New patch found: {d.name} ({d.address})")
-            asyncio.create_task(connect_to_patch(d))
+        # print(f"Found {len(devices)} total devices.")
+        for t in targets:
+            print(f"Patch found: {t.name} ({t.address})")
+            asyncio.create_task(connect_to_patch(t))
+
+
+        # tasks = [asyncio.create_task(connect_to_patch(d)) for d in targets]
+        # return tasks
 
 async def main():
-    # Start initial connect
-    init_tasks = await initial_scan_and_connect(scan_duration=BLE_SCAN_TIMEOUT)
 
     # Schedule periodic rescans
-    periodic_task = asyncio.create_task(periodic_rescan(interval=5))
-
+    periodic_task = asyncio.create_task(scan_and_connect(scan_duration=BLE_SCAN_TIMEOUT))
     # Gather all tasks and a never-ending sleep to prevent exit
     await asyncio.gather(
-        *init_tasks,
         periodic_task,
         asyncio.Event().wait()  # Run indefinitely
     )

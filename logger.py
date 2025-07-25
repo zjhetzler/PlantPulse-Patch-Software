@@ -1,6 +1,7 @@
 import csv
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 class BufferedLogger:
     def __init__(self, log_dir="logs", buffer_size=10):
@@ -13,14 +14,14 @@ class BufferedLogger:
         self._start_new_log_file()
 
     def _start_new_log_file(self):
-        now = datetime.utcnow().strftime("%Y-%m-%d")
+        now = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
         self.filename = os.path.join(self.log_dir, f"sensor_log_{now}.csv")
         print("Logging to:", self.filename)
 
         file_exists = os.path.isfile(self.filename)
         self.file = open(self.filename, mode="a", newline='')
         self.writer = csv.DictWriter(self.file, fieldnames=[
-            "timestamp", "patch_id",
+            "timestamp", "unix_timestamp", "patch_id",
             "temperature_ohms", "voc_1_ohms", "voc_2_ohms", "voc_3_ohms",
             "co2_ohms", "optical_ohms", "capacitance_raw"
         ])
@@ -28,6 +29,7 @@ class BufferedLogger:
             self.writer.writeheader()
 
     def log(self, record: dict):
+        record["timestamp"] = datetime.now(ZoneInfo("America/New_York")).strftime("%d/%m/%Y, %H:%M:%S")
         self.buffer.append(record)
         if len(self.buffer) >= self.buffer_size:
             self.flush()
