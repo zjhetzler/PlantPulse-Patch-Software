@@ -15,10 +15,9 @@ from logger import BufferedLogger
 SERVICE_UUID = bleak.uuids.normalize_uuid_str("1234")
 CHAR_UUID = bleak.uuids.normalize_uuid_str("1234")
 BLE_SCAN_TIMEOUT = 5
-# DEVICE_NAME_PREFIXES = ["AirPatch", "APCH", "APCH_01", "APCH_00"]
 prefix_filter = ("airpatch", "apch")
 logger = BufferedLogger(buffer_size=1)
-connected_addresses = set()
+connected_addresses = dict()
 
 async def handle_notification(sender, data):
     try:
@@ -28,8 +27,13 @@ async def handle_notification(sender, data):
     except Exception as e:
         print(f"Parse error: {e}")
 
+def disconnect_callback(sender: BleakClient):
+    print(f"Patch {sender.address} disconnected")
+    connected_addresses.pop(sender.address)
+    print(connected_addresses)
+
 async def connect_to_patch(device):
-    client = BleakClient(device)
+    client = BleakClient(device, disconnected_callback=disconnect_callback)
     if device.address in connected_addresses:
         return
     try:
@@ -47,8 +51,9 @@ async def connect_to_patch(device):
         #
 
         await client.start_notify(CHAR_UUID, handle_notification)
-        print("Subscribed to characteristic");
-        connected_addresses.add(device.address)
+        print("Subscribed to characteristic")
+        connected_addresses[device.address] = device.name
+        print(connected_addresses)
 
         while True:
             await asyncio.sleep(1)  # Keep alive
